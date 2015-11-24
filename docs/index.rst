@@ -14,6 +14,7 @@ Contents:
    authoring_content
    versions_and_locales
    translation_using_verbatim
+   porting_translations
    gulp
    importing_legacy_data
 

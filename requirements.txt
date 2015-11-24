@@ -186,3 +186,6 @@ execnet==1.2.0
 
 # sha256: Yx2-hD7Hza2vI5jFA0PYhweNT5N0oOMHWKNQI_hl--k
 pytest-xdist==1.11
+# sha256: FBuGF6RtlXQpVXaU6oPepHFu9Ys4V10FX-L2txHFpqk
+# sha256: VH7oV6x1nGI3dwHi5No4v9aTBlwgongRyBmCxBjq-fg
+puente==0.4

@@ -1,5 +1,7 @@
+import os
+import subprocess
 from datetime import datetime
-from itertools import chain
+from glob import glob
 
 from django.db.models.fields import TextField
 from django.conf import settings
@@ -24,25 +26,83 @@ def entry_strings(entry):
             and getattr(entry, field.name)]
 
 
-def page_template_generator(page):
-    yield page_template_template.format(
-        page_slug=page.slug,
-        parent_slug='/' + page.parent.slug if page.parent else '',
-        string=page.title)
+def page_strings(page):
+    """Yield an iterable of all strings within the given page."""
+    yield page.title
 
     for content_type in page._feincms_content_types:
         for entry in page.content.all_of_type(content_type):
             for entry_string in entry_strings(entry):
-                yield page_template_template.format(
-                    page_slug=page.slug,
-                    parent_slug='/' + page.parent.slug if page.parent else '',
-                    string=entry_string)
+                yield entry_string
 
 
-def pages_l10n_template(pages=None):
-    return '\n'.join(
-        chain(*[page_template_generator(page) for page in
-                pages or Page.objects.all()]))
+def versions_for_locale(locale):
+    """
+    Retrieve all version slugs for versions enabled in the given locale.
+    """
+    versions = set()
+    for version, data in settings.VERSIONS_LOCALE_MAP.items():
+        if (locale in data.get('locales', [])
+            or locale in data.get('pending_locales', [])):
+            versions.add(data['slug'])
+    return versions
+
+
+def all_versions():
+    """Retrieve all version slugs from settings.VERSIONS_LOCALE_MAP."""
+    for data in settings.VERSIONS_LOCALE_MAP.values():
+        yield data['slug']
+
+
+def versions_po_filename(locale, versions, template=False):
+    """
+    Generate the filename of the pofile containing strings for the given
+    locale and Firefox OS versions.
+    """
+    domain = 'firefox_os_' + '_'.join(sorted(versions))
+    return po_filename(locale, domain, template=template)
+
+
+def po_filename(locale, domain, template=False):
+    """
+    Return the filename of the pofile for the the given domain/locale.
+    """
+    ext = 'pot' if template else 'po'
+    filename = '{domain}.{ext}'.format(domain=domain, ext=ext)
+
+    return os.path.join(locale_dir(locale), 'LC_MESSAGES', filename)
+
+
+def locale_dir(locale):
+    if '-' in locale:
+        lang, country = locale.split('-')
+        locale = '_'.join([lang, country.upper()])
+    return os.path.join(settings.BASE_DIR, 'locale', locale)
+
+
+def po_filenames_for_locale(locale):
+    """
+    Return the filenames for all pofiles found within the given locale's
+    directory.
+    """
+    filenames = glob(os.path.join(locale_dir(locale), '**', '*.po'))
+    return [filename for filename in filenames if not filename.endswith('django.po')]
+
+
+def execute(command):
+    """
+    Execute the given command in a subprocess synchronously. Returns a
+    tuple of the form (return_code, stdout, stderr).
+    """
+    try:
+        st = subprocess.PIPE
+        proc = subprocess.Popen(args=command, stdout=st, stderr=st, stdin=st)
+
+        output, error = proc.communicate()
+        code = proc.returncode
+        return code, output, error
+    except OSError as error:
+        return -1, '', error
 
 
 def copy_content_and_children(page, new_page):

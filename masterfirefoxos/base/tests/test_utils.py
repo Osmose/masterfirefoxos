@@ -1,3 +1,4 @@
+import os
 from unittest.mock import Mock, patch
 
 from django.test import override_settings, RequestFactory
@@ -29,27 +30,6 @@ def test_entry_strings():
         subheader_2='sub 2', subheader_3='sub 3')
     assert set(utils.entry_strings(youtube_entry)) == set([
         'test title', 'test text', 'sub 2', 'sub 3'])
-
-
-def test_pages_l10n_template():
-    parent = Page(title='Parent Title', slug='parent-slug')
-    page = Page(title='Page Title', slug='page-slug')
-    page.parent = parent
-    parent_entry = models.RichTextEntry(text='<p>Parent Text</p>')
-    entry = models.RichTextEntry(text='<p>Page Text</p>')
-    parent.content.all_of_type = lambda content_type: [parent_entry]
-    page.content.all_of_type = lambda content_type: [entry]
-    l10n_template = utils.pages_l10n_template([parent, page])
-    assert 'Page path: /parent-slug/\n' in l10n_template
-    assert 'Page path: /parent-slug/page-slug/\n' in l10n_template
-    assert ('{% blocktrans trimmed %}\nParent Title\n{% endblocktrans %}'
-            in l10n_template)
-    assert ('{% blocktrans trimmed %}\nPage Title\n{% endblocktrans %}'
-            in l10n_template)
-    assert ('{% blocktrans trimmed %}\n<p>Parent Text</p>\n{% endblocktrans %}'
-            in l10n_template)
-    assert ('{% blocktrans trimmed %}\n<p>Page Text</p>\n{% endblocktrans %}'
-            in l10n_template)
 
 
 @patch('masterfirefoxos.base.utils.copy_content_and_children')
@@ -111,3 +91,101 @@ def test_youtube_embed_url_en():
     request = RequestFactory().get('/en/introduction/')
     expected = 'https://www.youtube.com/embed/en-youtube-id'
     assert utils.youtube_embed_url(request, 'en-youtube-id') == expected
+
+
+def test_page_strings():
+    page = Page(title='page title')
+    rich_text_entry = models.RichTextEntry(
+        title='title', subheader_2='sub 2', subheader_3='sub 3', text='test text')
+    faq_entry = models.FAQEntry(
+        question='test question', answer='test answer')
+
+    page._feincms_content_types = [Mock()]
+    page.content.all_of_type = lambda type: [rich_text_entry, faq_entry]
+
+    assert set(utils.page_strings(page)) == set([
+        'page title', 'title', 'sub 2', 'sub 3', 'test text', 'test question',
+        'test answer'])
+
+
+TEST_VERSIONS_LOCALE_MAP = {
+    'v1': {
+        'locales': ['fr', 'pt-BR'],
+        'pending_locales': ['es'],
+        'slug': 'v1',
+    },
+    'v2': {
+        'locales': ['fr', 'sl'],
+        'slug': 'v2',
+    },
+}
+
+
+@override_settings(VERSIONS_LOCALE_MAP=TEST_VERSIONS_LOCALE_MAP)
+def test_versions_for_locale():
+    assert set(utils.versions_for_locale('fr')) == set(['v1', 'v2'])
+    assert set(utils.versions_for_locale('sl')) == set(['v2'])
+    assert set(utils.versions_for_locale('es')) == set(['v1'])
+
+
+@override_settings(VERSIONS_LOCALE_MAP=TEST_VERSIONS_LOCALE_MAP)
+def test_all_versions():
+    assert set(utils.all_versions()) == set(['v1', 'v2'])
+
+
+def base_path(*parts):
+    return os.path.join(os.sep, 'app', *parts)
+
+
+@override_settings(BASE_DIR=base_path())
+def test_versions_po_filename():
+    assert (utils.versions_po_filename('es', ['v1'])
+            == base_path('locale', 'es', 'LC_MESSAGES', 'firefox_os_v1.po'))
+    assert (utils.versions_po_filename('pt-br', ['v2'], template=True)
+            == base_path('locale', 'pt_BR', 'LC_MESSAGES', 'firefox_os_v2.pot'))
+    assert (utils.versions_po_filename('es', ['z2', 'v1'])
+            == base_path('locale', 'es', 'LC_MESSAGES', 'firefox_os_v1_z2.po'))
+
+
+@override_settings(BASE_DIR=base_path())
+def test_po_filename():
+    assert (utils.po_filename('es', 'messages')
+            == base_path('locale', 'es', 'LC_MESSAGES', 'messages.po'))
+    assert (utils.po_filename('pt-br', 'template', template=True)
+            == base_path('locale', 'pt_BR', 'LC_MESSAGES', 'template.pot'))
+
+
+@override_settings(BASE_DIR=base_path())
+def test_locale_dir():
+    assert utils.locale_dir('es') == base_path('locale', 'es')
+    assert utils.locale_dir('pt-br') == base_path('locale', 'pt_BR')
+    assert utils.locale_dir('en-US') == base_path('locale', 'en_US')
+
+
+@override_settings(BASE_DIR=base_path())
+def test_po_filenames_for_locale():
+    with patch('masterfirefoxos.base.utils.glob') as mock_glob:
+        mock_glob.return_value = ['/app/test.po', '/app/test2.po', '/app/django.po']
+        assert (set(utils.po_filenames_for_locale('es'))
+                == set(['/app/test.po', '/app/test2.po']))
+        mock_glob.assert_called_with(base_path('locale', 'es', '**', '*.po'))
+
+
+def test_execute():
+    with patch('masterfirefoxos.base.utils.subprocess') as mock_subprocess:
+        proc = mock_subprocess.Popen.return_value
+        proc.returncode = 0
+        proc.communicate.return_value = 'output', 'error'
+
+        assert utils.execute(['foo', 'bar']) == (0, 'output', 'error')
+        pipe = mock_subprocess.PIPE
+        mock_subprocess.Popen.assert_called_with(
+            args=['foo', 'bar'], stdout=pipe, stderr=pipe, stdin=pipe)
+
+
+def test_execute_oserror():
+    with patch('masterfirefoxos.base.utils.subprocess') as mock_subprocess:
+        error = OSError('Could not find file')
+        mock_subprocess.Popen.side_effect = error
+
+        assert utils.execute(['foo', 'bar']) == (-1, '', error)

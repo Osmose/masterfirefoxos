@@ -6,7 +6,7 @@ Adding new Versions of the Documentation
 
 To add more Versions of MasterFirefoxOS Documentation you need to create
 the corresponding CMS pages and edit settings. For example to add
-version 2.0 based on version 1.3T::
+version 2.0 based on version 1.3T:
 
 1. Go to /admin/page/page
 2. Select the root page of version 1.3T
@@ -52,18 +52,18 @@ change `LANGUAGES` to::
 
 Then you need to generate messages for the first time for the added locale::
 
-  ./manage.py makemessages --locale de
+  ./manage.py extract
+  ./manage.py merge -c
 
 .. note::
 
-   It's important to explicitly define the new locale using the
-   `--locale` flag when executing the `makemessages` command. Using
-   the `-a` flag to make messages for all locales will ignore the new
-   locales.
+   It's important to include the `-c` flag when adding a new locale. Without it,
+   `merge` will ignore new locales that don't have directories yet and will not
+   create new directories for them.
 
 
 Managing the Versions of Documentation per locale
-------------------------------------------------
+-------------------------------------------------
 
 A locale gets activated once it gets linked with a Version of the
 Documentation. For example to link locale `foo` with version `1.1` edit
@@ -111,48 +111,34 @@ MasterFirefoxOS stores strings for localization in three different places:
   * HTML files (.html)
   * In the database
 
-Python and HTML files are automatically handled by Django's
-`makemessages` command. The database strings must first get extracted
-into a text file be parsable by `makemessages` command. To extract the
-database strings run::
+Python and HTML files are automatically handled by Puente_'s `extract` and
+`merge` commands and stored in `messages.po` files. To generate or update these
+files, run::
+
+  ./manage.py extract
+  ./manage.py merge
+
+The database strings are extracted and placed into translation files via the
+`db_strings` script::
 
   ./manage.py runscript db_strings
 
-.. note::
-
-  Extracted database strings are stored in `db-strings.txt` file. This
-  file should *not* be edited manually.
-
-Now all strings are in Python, HTML and Text files that `makemessages`
-command can parse. To generate `.po` files for all supported languages
-run::
-
-  ./manage.py makemessages -a
-
-.. warning::
-
-   Always extract database strings before running
-   `makemessages`. Failing to do so may remove all database strings
-   from `.po` files.
-
-
-Now you can distributed your `.po` files to the translators.
-
-The generated po files contain strings for all versions of the CMS
-content. The final step is to keep only the strings from the versions
-of the CMS content activated per locale::
-
-  ./manage.py runscript cleanup_po
+.. _Puente: https://github.com/mozilla/puente
 
 
 Compile strings
 ---------------
 
-Given that you have translated `.po` files you need to compile them
-into `.mo` files. To do this run the `compilemessages` command::
+Strings are stored in several `.po` files. To load them into the site, you must
+first collect them together into a single `django.po` file for each locale using
+the `collectstrings` script::
+
+  ./manage.py runscript collectstrings
+
+Once the strings have been collected, you must compile them into `.mo` files
+using the `compilemessages` command::
 
   ./manage.py compilemessages
-
 
 This is required step for translations to work.
 
@@ -160,21 +146,17 @@ This is required step for translations to work.
 How does database localization work?
 ------------------------------------
 
-The following command will iterate through all FeinCMS Pages and
-through all Content Types defined in each Page, and extract strings
-from fields named in each Content Type model's `_l10n_fields`
-attribute, and output to a template text file:
+The `db_strings` script iterates through all FeinCMS Pages and through all
+Content Types defined in each Page, and extracts strings from fields named in
+each Content Type model's `_l10n_fields` attribute. It groups these strings by
+the Firefox OS version that they belong to (strings shared among multiple
+versions are in shared groups) and creates `.pot` files with these strings.
 
-  ./manage.py db_strings
+Once the `.pot` files are created, the script creates or updates the `.po` files
+that translators edit with their translations.
 
-By default, the command outputs to `db-strings.txt` but accepts an
-optional `filename` argument.
-
-This text file can be parsed with `./manage.py makemessages` command
-to generate a `.po` file.
-
-We use a custom `render` method that calls `ugettext` on
-each localizable field::
+We use a custom `render` method that calls `ugettext` on each localizable
+field::
 
   from django.utils.translation import ugettext as _
 

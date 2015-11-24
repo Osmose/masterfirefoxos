@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'feincms.module.medialibrary',
     'django_extensions',
     'django_stackato',
+    'puente',
     'sorl.thumbnail',
     'storages',
 
@@ -121,6 +122,22 @@ TEMPLATE_LOADERS = (
     'django.template.loaders.filesystem.Loader',
     'django.template.loaders.app_directories.Loader',
 )
+
+JINJA_CONFIG = {
+    'extensions': [
+        'puente.ext.i18n',
+    ],
+}
+
+PUENTE = {
+    'BASE_DIR': BASE_DIR,
+    'DOMAIN_METHODS': {
+        'messages': [
+            ('**.py', 'python'),
+            ('masterfirefoxos/**/templates/**.html', 'jinja2'),
+        ]
+    }
+}
 
 # Django-CSP
 CSP_DEFAULT_SRC = (
